@@ -1,11 +1,20 @@
 {
   "name": "polybaskets-agent",
+  "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "@gear-js/api": "latest",
-    "@polkadot/keyring": "13.5.9",
-    "@polkadot/util": "13.5.9",
-    "@polkadot/util-crypto": "13.5.9",
+    "@gear-js/api": "0.45.0",
+    "@polkadot/api": "^16.5.1",
+    "@polkadot/types": "^16.5.1",
+    "@polkadot/keyring": "^16.5.1",
+    "@polkadot/util": "^16.5.1",
+    "@polkadot/util-crypto": "^16.5.1",
     "dotenv": "^16.4.5",
     "node-fetch": "^3.3.2"
   }
