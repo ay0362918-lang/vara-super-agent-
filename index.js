@@ -33,21 +33,21 @@ function log(...args) {
 }
 
 async function init() {
-    log("🔌 Connecting to Vara...");
-    api = await GearApi.create({ providerAddress: RPC });
+  log("🔌 Connecting to Vara...");
+  api = await GearApi.create({ providerAddress: RPC });
 
-    const keyring = new Keyring({ type: "sr25519" });
-    if (!process.env.PRIVATE_KEY) {
-        throw new Error("PRIVATE_KEY missing in .env");
-    }
-    account = keyring.addFromUri(process.env.PRIVATE_KEY);
+  const keyring = new Keyring({ type: "sr25519" });
+  if (!process.env.PRIVATE_KEY) {
+    throw new Error("PRIVATE_KEY missing in .env");
+  }
 
-    // Force the correct 66-char hex address for this specific wallet
-    hexAddress = "0x2a3d796f3e8401782789ebf3f92d12c8d9f0addb39643dbea01b96d230207a3f";
+  account = keyring.addFromUri(process.env.PRIVATE_KEY);
+  hexAddress = u8aToHex(decodeAddress(account.address));
 
-    log("✅ Connected:", account.address);
-    log("🆔 Hex Address:", hexAddress);
+  log("✅ Connected:", account.address);
+  log("🆔 Hex Address:", hexAddress);
 }
+
 
 async function ensureVoucher() {
     try {
