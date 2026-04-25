@@ -41,14 +41,13 @@ async function init() {
         throw new Error("PRIVATE_KEY missing in .env");
     }
     account = keyring.addFromUri(process.env.PRIVATE_KEY);
-      // Force the correct 66-char hex address for this specific wallet
-  hexAddress = "0x48df90d8b88c97760fa3cc012c6744e4bfb2fe360ca30a55ffb4b180323f826a";
 
+    // Force the correct 66-char hex address for this specific wallet
+    hexAddress = "0x2a3d796f3e8401782789ebf3f92d12c8d9f0addb39643dbea01b96d230207a3f";
 
-  log("✅ Connected:", account.address);
-  log("🆔 Hex Address:", hexAddress);
+    log("✅ Connected:", account.address);
+    log("🆔 Hex Address:", hexAddress);
 }
-
 
 async function ensureVoucher() {
     try {
