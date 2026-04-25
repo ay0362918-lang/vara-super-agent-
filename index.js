@@ -85,31 +85,92 @@ async function ensureVoucher() {
 }
 
 async function registerAgent() {
-    if (!voucherId) return;
-    try {
-        log("📝 Registering agent name on-chain...");
-        const payload = { RegisterAgent: [AGENT_NAME] };
+  if (!voucherId) return false;
 
-        const tx = await api.message.send({
-            destination: BASKET_MARKET,
-            payload,
-            gasLimit: 2_000_000_000,
-            prepaidVoucher: voucherId
-        });
+  try {
+    const { promisify } = await import("node:util");
+    const { execFile } = await import("node:child_process");
+    const { existsSync } = await import("node:fs");
+    const { join } = await import("node:path");
 
-        await new Promise((resolve, reject) => {
-            tx.signAndSend(account, ({ status }) => {
-                if (status.isInBlock) log("📥 Registration in block");
-                if (status.isFinalized) {
-                    log("✅ Registration finalized");
-                    resolve();
-                }
-            });
-        });
+    const execFileAsync = promisify(execFile);
+    const home = process.env.HOME || process.env.USERPROFILE || "";
 
-    } catch (err) {
-        log("ℹ️ Registration note:", err.message);
+    const idlCandidates = [
+      process.env.POLYBASKETS_IDL,
+      process.env.POLYBASKETS_SKILLS_DIR
+        ? join(process.env.POLYBASKETS_SKILLS_DIR, "idl", "polymarket-mirror.idl")
+        : null,
+      join(process.cwd(), "skills", "idl", "polymarket-mirror.idl"),
+      join(home, ".agents", "skills", "polybaskets-skills", "idl", "polymarket-mirror.idl")
+    ].filter(Boolean);
+
+    const idlPath = idlCandidates.find((p) => existsSync(p));
+
+    if (!idlPath) {
+      log("❌ Register error: polymarket-mirror.idl not found");
+      log("ℹ️ Looked in:", idlCandidates.join(" | "));
+      return false;
     }
+
+    if (!process.env.PRIVATE_KEY) {
+      log("❌ Register error: PRIVATE_KEY missing");
+      return false;
+    }
+
+    const signerArgs = process.env.PRIVATE_KEY.trim().includes(" ")
+      ? ["--mnemonic", process.env.PRIVATE_KEY.trim()]
+      : ["--seed", process.env.PRIVATE_KEY.trim()];
+
+    const argsJson = JSON.stringify([AGENT_NAME]);
+
+    await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
+      maxBuffer: 1024 * 1024
+    });
+
+    log("📝 Registering agent name on-chain...");
+
+    const { stdout, stderr } = await execFileAsync(
+      "vara-wallet",
+      [
+        ...signerArgs,
+        "call",
+        BASKET_MARKET,
+        "BasketMarket/RegisterAgent",
+        "--args",
+        argsJson,
+        "--voucher",
+        voucherId,
+        "--gas-limit",
+        "15000000000",
+        "--idl",
+        idlPath
+      ],
+      {
+        maxBuffer: 1024 * 1024 * 4
+      }
+    );
+
+    if (stderr && stderr.trim()) {
+      log("ℹ️ vara-wallet:", stderr.trim());
+    }
+
+    if (stdout && stdout.trim()) {
+      log("📄 Register response:", stdout.trim());
+    }
+
+    log("✅ Registration submitted");
+    return true;
+  } catch (err) {
+    const detail =
+      err?.stderr?.trim?.() ||
+      err?.stdout?.trim?.() ||
+      err?.message ||
+      String(err);
+
+    log("ℹ️ Registration note:", detail);
+    return false;
+  }
 }
 
 async function claimCHIP() {
