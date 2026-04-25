@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = ["nodejs", "git"]
+
+[phases.install]
+cmds = [
+  "npm install -g vara-wallet",
+  "npx skills add gear-foundation/vara-skills -g --all",
+  "npx skills add Adityaakr/polybaskets -g --all"
+]
+
+[start]
+cmd = "node index.js"
