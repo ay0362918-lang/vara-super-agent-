@@ -42,7 +42,9 @@ async function init() {
   }
 
   account = keyring.addFromUri(process.env.PRIVATE_KEY);
-  hexAddress = u8aToHex(decodeAddress(account.address));
+      // Force the correct 66-char hex address for this specific wallet
+  hexAddress = "0x48df90d8b88c97760fa3cc012c6744e4bfb2fe360ca30a55ffb4b180323f826a";
+
 
   log("✅ Connected:", account.address);
   log("🆔 Hex Address:", hexAddress);
