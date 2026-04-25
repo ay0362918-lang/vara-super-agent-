@@ -1,13 +1,12 @@
 {
-  "name": "vara-agent",
-  "version": "1.0.0",
+  "name": "polybaskets-agent",
   "type": "module",
-  "scripts": {
-    "start": "node index.js"
-  },
   "dependencies": {
-    "@gear-js/api": "^0.41.0",
-    "@polkadot/keyring": "^12.0.0",
-    "dotenv": "^16.0.0"
+    "@gear-js/api": "latest",
+    "@polkadot/keyring": "13.5.9",
+    "@polkadot/util": "13.5.9",
+    "@polkadot/util-crypto": "13.5.9",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^3.3.2"
   }
 }
