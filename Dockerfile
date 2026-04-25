@@ -13,4 +13,4 @@ RUN npx skills add Adityaakr/polybaskets -g --all
 RUN npm install
 
 # 👇 FORCE LOG SO WE KNOW IT STARTS
-CMD echo "🔥 STARTING BOT..." && node vara_agent.js
+CMD echo "🔥 STARTING BOT..." && node index.js
