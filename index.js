@@ -43,7 +43,7 @@ async function init() {
     account = keyring.addFromUri(process.env.PRIVATE_KEY);
 
     // Force the correct 66-char hex address for this specific wallet
-     hexAddress = "0xa043f97bc85c4c43e67244fc6d19a7d796b88adda32c766778ceb948699c7d76";
+    hexAddress = "0xa043f97bc85c4c43e67244fc6d19a7d796b88adda32c766778ceb948699c7d76";
 
     log("✅ Connected:", account.address);
     log("🆔 Hex Address:", hexAddress);
@@ -228,6 +228,8 @@ async function claimCHIP() {
                 "[]",
                 "--voucher",
                 voucherId,
+                "--gas-limit",
+                "25000000000",
                 "--idl",
                 idlPath
             ],
@@ -391,6 +393,8 @@ async function createAutonomousBasket() {
                 voucherId,
                 "--args",
                 argsJson,
+                "--gas-limit",
+                "35000000000",
                 "--idl",
                 idlPath
             ],
@@ -539,6 +543,8 @@ async function approveBetLane(amount) {
                     argsJson,
                     "--voucher",
                     voucherId,
+                    "--gas-limit",
+                    "25000000000",
                     "--idl",
                     idlPath
                 ],
@@ -666,6 +672,8 @@ async function placeBet(basketId, quote) {
                 argsJson,
                 "--voucher",
                 voucherId,
+                "--gas-limit",
+                "35000000000",
                 "--idl",
                 idlPath
             ],
