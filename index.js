@@ -1,28 +1,29 @@
 import { GearApi, decodeAddress } from "@gear-js/api";
 import { Keyring } from "@polkadot/keyring";
-import { u8aToHex } from "@polkadot/util";
 import { setTimeout as wait } from "timers/promises";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 
 dotenv.config();
 
-console.log("🔥 POLYBASKETS TURBO CREATOR AGENT STARTING...");
+console.log("🔥 POLYBASKETS APPROVE SPAMMER STARTING...");
 
 // --- CONFIG ---
 const RPC = "wss://rpc.vara.network";
 const BASKET_MARKET = "0xe5dd153b813c768b109094a9e2eb496c38216b1dbe868391f1d20ac927b7d2c2";
+const BET_TOKEN = "0x186f6cda18fea13d9fc5969eec5a379220d6726f64c1d5f4b346e89271f917bc";
+const BET_LANE = "0x35848dea0ab64f283497deaff93b12fe4d17649624b2cd5149f253ef372b29dc";
 
 const VOUCHER_URL = "https://voucher-backend-production-5a1b.up.railway.app/voucher";
-const POLYMARKET_API = "https://gamma-api.polymarket.com/markets";
 
-const AGENT_NAME = process.env.AGENT_NAME || "turbo-maker";
+const AGENT_NAME = process.env.AGENT_NAME || "approve-spammer";
 
 // --- STATE ---
 let api;
 let account;
 let hexAddress;
 let voucherId;
+let approveCounter = 0;
 
 function log(...args) {
     console.log(`[${new Date().toLocaleTimeString()}]`, ...args);
@@ -38,8 +39,7 @@ async function init() {
     }
     account = keyring.addFromUri(process.env.PRIVATE_KEY);
 
-    // Force the correct 66-char hex address for this specific wallet
-    // YOU SHOULD UPDATE THIS HEX ADDRESS FOR THE NEW SERVER!
+    // Update to correct hex for the wallet running THIS server
     hexAddress = "0xa043f97bc85c4c43e67244fc6d19a7d796b88adda32c766778ceb948699c7d76";
 
     log("✅ Connected:", account.address);
@@ -64,7 +64,7 @@ async function ensureVoucher() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 account: hexAddress,
-                programs: [BASKET_MARKET] // ONLY Basket Market needed for this script
+                programs: [BASKET_MARKET, BET_TOKEN, BET_LANE]
             })
         });
 
@@ -109,11 +109,6 @@ async function registerAgent() {
             return false;
         }
 
-        if (!process.env.PRIVATE_KEY) {
-            log("❌ Register error: PRIVATE_KEY missing");
-            return false;
-        }
-
         const signerArgs = process.env.PRIVATE_KEY.trim().includes(" ")
             ? ["--mnemonic", process.env.PRIVATE_KEY.trim()]
             : ["--seed", process.env.PRIVATE_KEY.trim()];
@@ -149,52 +144,16 @@ async function registerAgent() {
             }
         );
 
-        if (stderr && stderr.trim()) {
-            log("ℹ️ vara-wallet:", stderr.trim());
-        }
-
-        if (stdout && stdout.trim()) {
-            log("📄 Register response:", stdout.trim());
-        }
-
         log("✅ Registration submitted");
         return true;
     } catch (err) {
-        const detail =
-            err?.stderr?.trim?.() ||
-            err?.stdout?.trim?.() ||
-            err?.message ||
-            String(err);
-
-        log("ℹ️ Registration note:", detail);
+        log("ℹ️ Registration note:", String(err));
         return false;
     }
 }
 
-async function fetchMarkets() {
-    try {
-        log("🔍 Fetching active Polymarket markets...");
-        const now = new Date();
-        const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
-        const res = await fetch(`${POLYMARKET_API}?closed=false&order=volume24hr&ascending=false&end_date_min=${oneHourLater.toISOString()}&limit=10`);
-
-        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-        const markets = await res.json();
-
-        return markets.map(m => ({
-            poly_market_id: String(m.id),
-            poly_slug: m.slug,
-            question: m.question,
-            outcomePrices: m.outcomePrices ? JSON.parse(m.outcomePrices) : []
-        })).filter(m => m.outcomePrices && m.outcomePrices.length >= 2);
-    } catch (err) {
-        log("❌ Market fetch error:", err.message);
-        return [];
-    }
-}
-
-async function createAutonomousBasket() {
-    if (!voucherId) return null;
+async function approveBetLane(baseAmount) {
+    if (!voucherId) return false;
 
     try {
         const { promisify } = await import("node:util");
@@ -203,135 +162,83 @@ async function createAutonomousBasket() {
         const { join } = await import("node:path");
 
         const execFileAsync = promisify(execFile);
-
-        const markets = await fetchMarkets();
-        if (markets.length < 2) {
-            log("⚠️ Not enough active markets found to create a basket");
-            return null;
-        }
-
-        const selected = [];
-        const usedIndices = new Set();
-        while (selected.length < 2) {
-            const idx = Math.floor(Math.random() * markets.length);
-            if (!usedIndices.has(idx)) {
-                selected.push(markets[idx]);
-                usedIndices.add(idx);
-            }
-        }
-
-        log(`🏗️ Creating basket with: ${selected.map(m => m.poly_slug).join(", ")}`);
-
-        const items = selected.map(m => ({
-            poly_market_id: String(m.poly_market_id),
-            poly_slug: String(m.poly_slug).slice(0, 128),
-            weight_bps: 5000,
-            selected_outcome: Math.random() > 0.5 ? "YES" : "NO"
-        }));
-
-        const basketName = `Turbo-${AGENT_NAME}-${Math.random().toString(36).substring(2, 7)}`.slice(0, 128);
-        const description = "Ultra-fast basket created by Turbo Agent".slice(0, 512);
         const home = process.env.HOME || process.env.USERPROFILE || "";
 
         const idlCandidates = [
-            process.env.POLYBASKETS_IDL,
+            process.env.BET_TOKEN_IDL,
             process.env.POLYBASKETS_SKILLS_DIR
-                ? join(process.env.POLYBASKETS_SKILLS_DIR, "idl", "polymarket-mirror.idl")
+                ? join(process.env.POLYBASKETS_SKILLS_DIR, "idl", "bet_token_client.idl")
                 : null,
-            join(process.cwd(), "skills", "idl", "polymarket-mirror.idl"),
-            join(home, ".agents", "skills", "polybaskets-skills", "idl", "polymarket-mirror.idl")
+            join(process.cwd(), "skills", "idl", "bet_token_client.idl"),
+            join(home, ".agents", "skills", "polybaskets-skills", "idl", "bet_token_client.idl")
         ].filter(Boolean);
 
         const idlPath = idlCandidates.find((p) => existsSync(p));
 
         if (!idlPath) {
-            log("❌ Basket creation error: polymarket-mirror.idl not found");
-            return null;
-        }
-
-        if (!process.env.PRIVATE_KEY) {
-            log("❌ Basket creation error: PRIVATE_KEY missing");
-            return null;
+            log("❌ Approve error: bet_token_client.idl not found");
+            return false;
         }
 
         const signerArgs = process.env.PRIVATE_KEY.trim().includes(" ")
             ? ["--mnemonic", process.env.PRIVATE_KEY.trim()]
             : ["--seed", process.env.PRIVATE_KEY.trim()];
 
-        const argsJson = JSON.stringify([
-            basketName,
-            description,
-            items,
-            "Bet"
-        ]);
-
+        // Vary the exact amount slightly so the transaction payload is unique each time constraints
+        // preventing the blockchain or RPC node from caching and dropping what looks like an accidental duplicate transaction.
+        const randomizedAmount = Number(baseAmount) + Math.floor(Math.random() * 100);
+        
         await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
             maxBuffer: 1024 * 1024,
             timeout: 60000
         });
+
+        const argsJson = `["${BET_LANE}", ${randomizedAmount}]`;
+        
+        log(`💸 Spam Approve Action #${approveCounter + 1} for CHIP (${randomizedAmount})`);
 
         const { stdout, stderr } = await execFileAsync(
             "vara-wallet",
             [
                 ...signerArgs,
                 "call",
-                BASKET_MARKET,
-                "BasketMarket/CreateBasket",
-                "--voucher",
-                voucherId,
+                BET_TOKEN,
+                "BetToken/Approve",
                 "--args",
                 argsJson,
+                "--voucher",
+                voucherId,
                 "--gas-limit",
-                "35000000000",
+                "25000000000",
                 "--idl",
                 idlPath
             ],
-            {
-                maxBuffer: 1024 * 1024 * 4,
-                timeout: 120000
-            }
+            { maxBuffer: 1024 * 1024 * 4, timeout: 120000 }
         );
 
-        if (stderr && stderr.trim()) {
-            log("ℹ️ vara-wallet:", stderr.trim());
-        }
-
-        const raw = stdout.trim();
-        let basketId = null;
-
+        const raw = stdout?.trim() || "";
+        let parsed = null;
         try {
-            const parsed = JSON.parse(raw);
-            basketId = parsed?.result ?? parsed?.ok ?? parsed;
+            parsed = JSON.parse(raw);
         } catch {
-            const match = raw.match(/\d+/g);
-            if (match && match.length) {
-                basketId = match[match.length - 1];
-            }
+            return false;
         }
 
-        if (basketId === null || basketId === undefined || basketId === "") {
-            log("❌ Basket creation error: unable to parse basket ID");
-            log("📄 Raw output:", raw);
-            return null;
+        if (parsed?.result === true) {
+            approveCounter++;
+            log(`✅ Spam Approve #${approveCounter} Successful`);
+            return true;
         }
+        return false;
 
-        basketId = String(basketId);
-        log(`🎯 Basket created with ID: ${basketId}`);
-        return basketId;
     } catch (err) {
-        const detail =
-            err?.stderr?.trim?.() ||
-            err?.stdout?.trim?.() ||
-            err?.message ||
-            String(err);
-
-        log("❌ Basket creation error:", detail);
-        return null;
+        log("❌ Approve error:", err.message || String(err));
+        return false;
     }
 }
 
 async function loop() {
-    log("🚀 TURBO LOOP STARTED");
+    log("🚀 APPROVE SPAMMER LOOP STARTED");
 
     await init();
     await ensureVoucher();
@@ -339,21 +246,20 @@ async function loop() {
 
     while (true) {
         try {
-            await ensureVoucher();
-
-            log("🔄 Starting autonomous cycle...");
-            const result = await createAutonomousBasket();
-
-            if (result) {
-                log(`✅ Created Basket ID: ${result}`);
+            // Re-verify voucher silently occasionally
+            if (approveCounter % 10 === 0) {
+                 await ensureVoucher();
             }
 
-            log("⏰ Waiting roughly 5 seconds before next creation...");
-            await wait(5000); // 5 sec cooldown between creation to avoid overwhelming the node
+            // Fire an approve immediately
+            await approveBetLane(1000);
+
+            // Just wait 3 seconds to avoid local nonce collisions inside vara-wallet while it indexes
+            await wait(3000); 
 
         } catch (err) {
             log("💥 Loop error:", err.message);
-            await wait(5000);
+            await wait(10000);
         }
     }
 }
