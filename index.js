@@ -125,7 +125,8 @@ async function registerAgent() {
         const argsJson = JSON.stringify([AGENT_NAME]);
 
         await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
-            maxBuffer: 1024 * 1024
+            maxBuffer: 1024 * 1024,
+            timeout: 60000
         });
 
         log("📝 Registering agent name on-chain...");
@@ -147,7 +148,8 @@ async function registerAgent() {
                 idlPath
             ],
             {
-                maxBuffer: 1024 * 1024 * 4
+                maxBuffer: 1024 * 1024 * 4,
+                timeout: 120000
             }
         );
 
@@ -214,7 +216,8 @@ async function claimCHIP() {
         log("🪙 Claiming hourly CHIP...");
 
         await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
-            maxBuffer: 1024 * 1024
+            maxBuffer: 1024 * 1024,
+            timeout: 60000
         });
 
         const { stdout, stderr } = await execFileAsync(
@@ -234,7 +237,8 @@ async function claimCHIP() {
                 idlPath
             ],
             {
-                maxBuffer: 1024 * 1024 * 4
+                maxBuffer: 1024 * 1024 * 4,
+                timeout: 120000
             }
         );
 
@@ -379,7 +383,8 @@ async function createAutonomousBasket() {
         ]);
 
         await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
-            maxBuffer: 1024 * 1024
+            maxBuffer: 1024 * 1024,
+            timeout: 60000
         });
 
         const { stdout, stderr } = await execFileAsync(
@@ -399,7 +404,8 @@ async function createAutonomousBasket() {
                 idlPath
             ],
             {
-                maxBuffer: 1024 * 1024 * 4
+                maxBuffer: 1024 * 1024 * 4,
+                timeout: 120000
             }
         );
 
@@ -526,7 +532,8 @@ async function approveBetLane(amount) {
             : ["--seed", process.env.PRIVATE_KEY.trim()];
 
         await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
-            maxBuffer: 1024 * 1024
+            maxBuffer: 1024 * 1024,
+            timeout: 60000
         });
 
         const runApprove = async (rawAmount, label) => {
@@ -548,7 +555,7 @@ async function approveBetLane(amount) {
                     "--idl",
                     idlPath
                 ],
-                { maxBuffer: 1024 * 1024 * 4 }
+                { maxBuffer: 1024 * 1024 * 4, timeout: 120000 }
             );
 
             if (stderr && stderr.trim()) {
@@ -658,7 +665,8 @@ async function placeBet(basketId, quote) {
         ]);
 
         await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
-            maxBuffer: 1024 * 1024
+            maxBuffer: 1024 * 1024,
+            timeout: 60000
         });
 
         const { stdout, stderr } = await execFileAsync(
@@ -678,7 +686,8 @@ async function placeBet(basketId, quote) {
                 idlPath
             ],
             {
-                maxBuffer: 1024 * 1024 * 4
+                maxBuffer: 1024 * 1024 * 4,
+                timeout: 120000
             }
         );
 
