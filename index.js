@@ -251,8 +251,8 @@ async function loop() {
                  await ensureVoucher();
             }
 
-            // Fire an approve immediately
-            await approveBetLane(1000);
+            // Fire a massive approve immediately to ensure any concurrent betting scripts sharing the wallet always have allowance
+            await approveBetLane("20000000000000");
 
             // Zero delay to maximize speed. The execFile Async inherently blocks until the block processes.
 
