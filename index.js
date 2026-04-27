@@ -254,8 +254,7 @@ async function loop() {
             // Fire an approve immediately
             await approveBetLane(1000);
 
-            // Just wait 3 seconds to avoid local nonce collisions inside vara-wallet while it indexes
-            await wait(3000); 
+            // Zero delay to maximize speed. The execFile Async inherently blocks until the block processes.
 
         } catch (err) {
             log("💥 Loop error:", err.message);
