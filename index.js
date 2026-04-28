@@ -2,6 +2,7 @@ import { GearApi, ProgramMetadata } from "@gear-js/api";
 import { Keyring } from "@polkadot/keyring";
 import { setTimeout as wait } from "timers/promises";
 import fs from "fs";
+import path from "path";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 
@@ -22,6 +23,9 @@ const BET_LANE = "0x35848dea0ab64f283497deaff93b12fe4d17649624b2cd5149f253ef372b
 const VOUCHER_URL = "https://voucher-backend-production-5a1b.up.railway.app/voucher";
 const BET_QUOTE_URL = "https://bet-quote-service-production.up.railway.app/api/bet-lane/quote";
 const POLYMARKET_API = "https://gamma-api.polymarket.com/markets";
+
+let api, account, hexAddress, voucherId;
+let metaBasket, metaToken, metaLane;
 
 function log(...args) {
     console.log(`[${new Date().toLocaleTimeString()}] 💰 [CHIP-FARMER]`, ...args);
