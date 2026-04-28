@@ -1,291 +1,252 @@
-import { GearApi, decodeAddress } from "@gear-js/api";
+import { GearApi, ProgramMetadata } from "@gear-js/api";
 import { Keyring } from "@polkadot/keyring";
 import { setTimeout as wait } from "timers/promises";
+import fs from "fs";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
 
 dotenv.config();
 
-console.log("🔥 POLYBASKETS APPROVE SPAMMER STARTING...");
+/**
+ * SEASON 2 CHIP FARMER
+ * -------------------
+ * Optimized for winning bets and accumulating real CHIPs.
+ * Uses market data to pick favored outcomes (>85% probability).
+ */
 
-// --- CONFIG ---
 const RPC = "wss://rpc.vara.network";
 const BASKET_MARKET = "0xe5dd153b813c768b109094a9e2eb496c38216b1dbe868391f1d20ac927b7d2c2";
 const BET_TOKEN = "0x186f6cda18fea13d9fc5969eec5a379220d6726f64c1d5f4b346e89271f917bc";
 const BET_LANE = "0x35848dea0ab64f283497deaff93b12fe4d17649624b2cd5149f253ef372b29dc";
 
 const VOUCHER_URL = "https://voucher-backend-production-5a1b.up.railway.app/voucher";
+const BET_QUOTE_URL = "https://bet-quote-service-production.up.railway.app/api/bet-lane/quote";
+const POLYMARKET_API = "https://gamma-api.polymarket.com/markets";
 
-const AGENT_NAME = process.env.AGENT_NAME || "approve-spammer";
+const IDL_BASKET = "C:/Users/yezir/.agents/skills/polybaskets-skills/idl/polymarket-mirror.idl";
+const IDL_TOKEN = "C:/Users/yezir/.agents/skills/polybaskets-skills/idl/bet_token_client.idl";
+const IDL_LANE = "C:/Users/yezir/.agents/skills/polybaskets-skills/idl/bet_lane_client.idl";
 
-// --- STATE ---
-let api;
-let account;
-let hexAddress;
-let voucherId;
-let approveCounter = 0;
+let api, account, hexAddress, voucherId;
+let metaBasket, metaToken, metaLane;
 
 function log(...args) {
-    console.log(`[${new Date().toLocaleTimeString()}]`, ...args);
+    console.log(`[${new Date().toLocaleTimeString()}] 💰 [CHIP-FARMER]`, ...args);
 }
 
 async function init() {
-    log("🔌 Connecting to Vara...");
+    log("Initializing Gear API and Loading Metadata...");
     api = await GearApi.create({ providerAddress: RPC });
-
     const keyring = new Keyring({ type: "sr25519" });
-    if (!process.env.PRIVATE_KEY) {
-        throw new Error("PRIVATE_KEY missing in .env");
-    }
     account = keyring.addFromUri(process.env.PRIVATE_KEY);
-
-    // Update to correct hex for the wallet running THIS server
     hexAddress = "0xa043f97bc85c4c43e67244fc6d19a7d796b88adda32c766778ceb948699c7d76";
 
-    log("✅ Connected:", account.address);
-    log("🆔 Hex Address:", hexAddress);
+    metaBasket = ProgramMetadata.from(fs.readFileSync(IDL_BASKET, "utf8"));
+    metaToken = ProgramMetadata.from(fs.readFileSync(IDL_TOKEN, "utf8"));
+    metaLane = ProgramMetadata.from(fs.readFileSync(IDL_LANE, "utf8"));
+    
+    log("Metadata loaded. Farmer ready.");
 }
 
 async function ensureVoucher() {
     try {
-        log("🎫 Checking voucher status...");
         const res = await fetch(`${VOUCHER_URL}/${hexAddress}`);
         const data = await res.json();
-
         if (data.voucherId && data.canTopUpNow === false) {
-            log("✅ Voucher active:", data.voucherId);
             voucherId = data.voucherId;
             return;
         }
-
-        log("🆕 Requesting/Topping up voucher...");
         const postRes = await fetch(VOUCHER_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                account: hexAddress,
-                programs: [BASKET_MARKET, BET_TOKEN, BET_LANE]
-            })
+            body: JSON.stringify({ account: hexAddress, programs: [BASKET_MARKET, BET_TOKEN, BET_LANE] })
         });
-
         const postData = await postRes.json();
-        if (postData.voucherId) {
-            log("✅ Voucher ready:", postData.voucherId);
-            voucherId = postData.voucherId;
-        } else if (postRes.status === 429) {
-            log("⏳ Rate limited, using existing voucher if available");
-            if (data.voucherId) voucherId = data.voucherId;
-        }
-    } catch (err) {
-        log("⚠️ Voucher error:", err.message);
-    }
+        voucherId = postData.voucherId || data.voucherId;
+    } catch (e) { log("Voucher error:", e.message); }
 }
 
-async function registerAgent() {
-    if (!voucherId) return false;
-
+async function getBalance() {
     try {
-        const { promisify } = await import("node:util");
-        const { execFile } = await import("node:child_process");
-        const { existsSync } = await import("node:fs");
-        const { join } = await import("node:path");
-
-        const execFileAsync = promisify(execFile);
-        const home = process.env.HOME || process.env.USERPROFILE || "";
-
-        const idlCandidates = [
-            process.env.POLYBASKETS_IDL,
-            process.env.POLYBASKETS_SKILLS_DIR
-                ? join(process.env.POLYBASKETS_SKILLS_DIR, "idl", "polymarket-mirror.idl")
-                : null,
-            join(process.cwd(), "skills", "idl", "polymarket-mirror.idl"),
-            join(home, ".agents", "skills", "polybaskets-skills", "idl", "polymarket-mirror.idl")
-        ].filter(Boolean);
-
-        const idlPath = idlCandidates.find((p) => existsSync(p));
-
-        if (!idlPath) {
-            log("❌ Register error: polymarket-mirror.idl not found");
-            return false;
-        }
-
-        const signerArgs = process.env.PRIVATE_KEY.trim().includes(" ")
-            ? ["--mnemonic", process.env.PRIVATE_KEY.trim()]
-            : ["--seed", process.env.PRIVATE_KEY.trim()];
-
-        const argsJson = JSON.stringify([AGENT_NAME]);
-
-        await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
-            maxBuffer: 1024 * 1024,
-            timeout: 60000
-        });
-
-        log("📝 Registering agent name on-chain...");
-
-        const { stdout, stderr } = await execFileAsync(
-            "vara-wallet",
-            [
-                ...signerArgs,
-                "call",
-                BASKET_MARKET,
-                "BasketMarket/RegisterAgent",
-                "--args",
-                argsJson,
-                "--voucher",
-                voucherId,
-                "--gas-limit",
-                "15000000000",
-                "--idl",
-                idlPath
-            ],
-            {
-                maxBuffer: 1024 * 1024 * 4,
-                timeout: 120000
-            }
-        );
-
-        log("✅ Registration submitted");
-        return true;
-    } catch (err) {
-        log("ℹ️ Registration note:", String(err));
-        return false;
-    }
+        const res = await api.programState.read({ programId: BET_TOKEN, payload: { BalanceOf: hexAddress } }, metaToken);
+        return BigInt(res.toString());
+    } catch (e) { return 0n; }
 }
 
-async function approveBetLane(baseAmount) {
-    if (!voucherId) return false;
-
+async function fetchFavoredMarkets() {
     try {
-        const { promisify } = await import("node:util");
-        const { execFile } = await import("node:child_process");
-        const { existsSync } = await import("node:fs");
-        const { join } = await import("node:path");
-
-        const execFileAsync = promisify(execFile);
-        const home = process.env.HOME || process.env.USERPROFILE || "";
-
-        const idlCandidates = [
-            process.env.BET_TOKEN_IDL,
-            process.env.POLYBASKETS_SKILLS_DIR
-                ? join(process.env.POLYBASKETS_SKILLS_DIR, "idl", "bet_token_client.idl")
-                : null,
-            join(process.cwd(), "skills", "idl", "bet_token_client.idl"),
-            join(home, ".agents", "skills", "polybaskets-skills", "idl", "bet_token_client.idl")
-        ].filter(Boolean);
-
-        const idlPath = idlCandidates.find((p) => existsSync(p));
-
-        if (!idlPath) {
-            log("❌ Approve error: bet_token_client.idl not found");
-            return false;
-        }
-
-        const signerArgs = process.env.PRIVATE_KEY.trim().includes(" ")
-            ? ["--mnemonic", process.env.PRIVATE_KEY.trim()]
-            : ["--seed", process.env.PRIVATE_KEY.trim()];
-
-        // Vary the exact amount slightly so the transaction payload is unique each time constraints
-        // preventing the blockchain or RPC node from caching and dropping what looks like an accidental duplicate transaction.
-        const randomizedAmount = Number(baseAmount) + Math.floor(Math.random() * 100);
+        const now = new Date();
+        const twentyFourHoursLater = new Date(now.getTime() + 24 * 60 * 60 * 1000);
         
-        // [MASSIVE SPEED OPTIMIZATION]: Removed the 'config set network mainnet' command from the loop since it is already permanently configured in registerAgent!
-
-        const argsJson = `["${BET_LANE}", ${randomizedAmount}]`;
+        log(`Searching for markets ending before ${twentyFourHoursLater.toLocaleTimeString()}...`);
         
-        log(`💸 Spam Approve Action #${approveCounter + 1} for CHIP (${randomizedAmount})`);
-
-        const { stdout, stderr } = await execFileAsync(
-            "vara-wallet",
-            [
-                ...signerArgs,
-                "call",
-                BET_TOKEN,
-                "BetToken/Approve",
-                "--args",
-                argsJson,
-                "--voucher",
-                voucherId,
-                "--gas-limit",
-                "25000000000",
-                "--idl",
-                idlPath
-            ],
-            { maxBuffer: 1024 * 1024 * 4, timeout: 120000 }
-        );
-
-        const raw = stdout?.trim() || "";
-        let parsed = null;
-        try {
-            parsed = JSON.parse(raw);
-        } catch {
-            return false;
-        }
-
-        if (parsed?.result === true) {
-            approveCounter++;
-            log(`✅ Spam Approve #${approveCounter} Successful`);
-            return true;
-        }
-        return false;
-
-    } catch (err) {
-        let errorMsg = err.message || String(err);
-        if (process.env.PRIVATE_KEY) {
-            errorMsg = errorMsg.replace(process.env.PRIVATE_KEY.trim(), "[HIDDEN-MNEMONIC]");
-        }
-        // Shorten the massive error dump since it's just expected nonce collisions
-        const isCollision = errorMsg.includes("Command failed");
-        log(isCollision ? "⚠️ Approve skipped (Expected Nonce Collision)" : `❌ Approve error: ${errorMsg}`);
-        return false;
-    }
-}
-
-async function worker(id, offsetMs) {
-    await wait(offsetMs);
-    log(`🏃 Worker ${id} spawned and offsetting by ${offsetMs}ms...`);
-    let localCounter = 0;
-    while (true) {
-        try {
-            // Only worker 1 does the voucher check to save API calls
-            if (localCounter % 10 === 0 && id === 1) { 
-                 await ensureVoucher();
+        // Filter for markets ending soon (within 24h) and sort by end_date (ascending)
+        const url = `${POLYMARKET_API}?closed=false&order=end_date&ascending=true&limit=30&end_date_max=${twentyFourHoursLater.toISOString()}`;
+        const res = await fetch(url);
+        const markets = await res.json();
+        
+        return markets.map(m => {
+            const prices = m.outcomePrices ? JSON.parse(m.outcomePrices) : [0.5, 0.5];
+            const probYes = parseFloat(prices[0]);
+            const probNo = parseFloat(prices[1]);
+            
+            let selectedOutcome = "YES";
+            let probability = probYes;
+            
+            if (probNo > probYes) {
+                selectedOutcome = "NO";
+                probability = probNo;
             }
-            // Add massive random padding at the end to guarantee variance
-            await approveBetLane("200000000000" + Math.floor(Math.random() * 99));
-            localCounter++;
-        } catch (err) {
-            await wait(2000);
-        }
+            
+            return {
+                id: String(m.id),
+                slug: m.slug,
+                selectedOutcome,
+                probability,
+                endDate: new Date(m.endDate)
+            };
+        }).filter(m => m.probability > 0.85); // High confidence + Fast resolution
+    } catch (e) { 
+        log("Market fetch error:", e.message);
+        return []; 
     }
 }
 
-async function loop() {
-    log("🚀 MULTI-THREADED APPROVE SPAMMER LOOP STARTED");
+async function claimAllRewards() {
+    try {
+        log("Checking for settled bets to claim rewards...");
+        const res = await api.programState.read({ programId: BET_LANE, payload: { GetPositions: [hexAddress, 0, 50] } }, metaLane);
+        const positions = res?.ok || [];
+        
+        for (const pos of positions) {
+            if (pos.position && !pos.position.claimed) {
+                const basketId = pos.basket_id;
+                log(`Attempting to claim rewards for Basket ID: ${basketId}...`);
+                const message = { destination: BET_LANE, payload: { Claim: basketId }, gasLimit: 35000000000, value: 0, prepaid: true };
+                await api.message.send(message, metaLane).signAndSend(account, { voucherId });
+                log(`✅ Claim sent for ${basketId}`);
+                await wait(2000);
+            }
+        }
+    } catch (e) {
+        log("Claim rewards error:", e.message);
+    }
+}
 
-    await init();
+async function farmCycle() {
     await ensureVoucher();
-    await registerAgent();
+    await claimHourly();
+    await claimAllRewards();
 
-    // Spawn 5 concurrent overlapping workers on this ONE server
-    // They are offset by 1500ms so they perfectly interleave the 6s transaction block time natively!
-    worker(1, 0);
-    worker(2, 1500);
-    worker(3, 3000);
-    worker(4, 4500);
-    worker(5, 6000);
+    const balance = await getBalance();
+    log(`Current CHIP Balance: ${(Number(balance) / 1e12).toFixed(2)}`);
 
-    while(true) {
-        // Keep the main process alive forever while workers do the heavy lifting in asynchronously
-        await wait(60000);
+    if (balance < 1000000000000n) { // Need at least 1 CHIP to bet
+        log("Insufficient balance for betting. Waiting for claim...");
+        return;
     }
+
+    // Determine bet amount: Bet 100% of balance to maximize CHIP-to-VARA conversion
+    let betAmount = balance;
+    if (betAmount < 1000000000000n) { // Minimum 1 CHIP
+        log("Insufficient balance for betting. Waiting for claim...");
+        return;
+    }
+    
+    // Safety cap at 1,000,000 CHIP just in case, but usually we want to bet it all
+    const cap = 1000000000000000000n; 
+    if (betAmount > cap) betAmount = cap;
+
+    log(`Planning MAX bet of ${(Number(betAmount) / 1e12).toFixed(2)} CHIP on favored outcomes...`);
+
+    const favored = await fetchFavoredMarkets();
+    if (favored.length < 1) {
+        log("No highly favored markets found right now. Skipping cycle.");
+        return;
+    }
+
+    // Pick the top 2 markets ending SOONEST that are still favored
+    const targetMarkets = favored.sort((a,b) => a.endDate - b.endDate).slice(0, 2);
+    const items = targetMarkets.map(m => ({
+        poly_market_id: m.id,
+        poly_slug: m.slug.slice(0, 128),
+        weight_bps: 10000 / targetMarkets.length,
+        selected_outcome: m.selectedOutcome
+    }));
+
+    log(`Creating Safe Basket with outcomes: ${targetMarkets.map(m => `${m.slug} (${m.selectedOutcome} @ ${(m.probability*100).toFixed(0)}%)`).join(", ")}`);
+
+    // 1. Create Basket
+    const createPayload = { CreateBasket: ["SafeFarmer", "Season 2 Chip Accumulator", items, "Bet"] };
+    const createMsg = { destination: BASKET_MARKET, payload: createPayload, gasLimit: 35000000000, value: 0, prepaid: true };
+    
+    let basketId;
+    const createExt = api.message.send(createMsg, metaBasket);
+    const result = await new Promise((resolve) => {
+        createExt.signAndSend(account, { voucherId }, ({ status, events }) => {
+            if (status.isInBlock) {
+                // Find basket ID in events
+                events.forEach(({ event }) => {
+                    if (event.method === 'UserMessageSent') {
+                        // In Gear, the ID is returned in the message reply or we can query it
+                    }
+                });
+                resolve(true);
+            }
+        });
+    });
+
+    // For simplicity, we'll query the last basket created by this user
+    await wait(3000);
+    const positions = await api.programState.read({ programId: BASKET_MARKET, payload: { GetPositions: hexAddress } }, metaBasket);
+    // Find the latest basket ID (highest ID)
+    const latestPos = positions.sort((a,b) => Number(b.basket_id) - Number(a.basket_id))[0];
+    basketId = latestPos ? latestPos.basket_id : null;
+
+    if (!basketId) {
+        log("Could not identify new basket ID. Skipping bet.");
+        return;
+    }
+
+    log(`Targeting Basket ID: ${basketId}`);
+
+    // 2. Get Quote
+    const quoteRes = await fetch(BET_QUOTE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: hexAddress, basketId: Number(basketId), amount: betAmount.toString(), targetProgramId: BET_LANE })
+    });
+    const quote = await quoteRes.json();
+    if (!quote || quote.error) {
+        log("Quote failed:", quote?.error);
+        return;
+    }
+
+    // 3. Approve
+    log("Approving CHIP for bet...");
+    const appMsg = { destination: BET_TOKEN, payload: { Approve: [BET_LANE, betAmount.toString()] }, gasLimit: 25000000000, value: 0, prepaid: true };
+    await api.message.send(appMsg, metaToken).signAndSend(account, { voucherId });
+    await wait(2000);
+
+    // 4. Place Bet
+    log("Placing Smart Bet...");
+    const betMsg = { destination: BET_LANE, payload: { PlaceBet: [basketId, betAmount.toString(), quote] }, gasLimit: 45000000000, value: 0, prepaid: true };
+    await api.message.send(betMsg, metaLane).signAndSend(account, { voucherId });
+    log("✅ Bet Placed. Success chance optimized.");
 }
 
 async function main() {
     await init();
-    await loop();
+    while (true) {
+        try {
+            await farmCycle();
+            log("Sleeping for 5 minutes...");
+            await wait(5 * 60 * 1000);
+        } catch (e) {
+            log("Cycle error:", e.message);
+            await wait(30000);
+        }
+    }
 }
 
-main().catch((err) => {
-    console.error("💥 Fatal:", err);
-    process.exit(1);
-});
+main().catch(e => console.error(e));
