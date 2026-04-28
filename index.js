@@ -23,27 +23,43 @@ const VOUCHER_URL = "https://voucher-backend-production-5a1b.up.railway.app/vouc
 const BET_QUOTE_URL = "https://bet-quote-service-production.up.railway.app/api/bet-lane/quote";
 const POLYMARKET_API = "https://gamma-api.polymarket.com/markets";
 
-const IDL_BASKET = "C:/Users/yezir/.agents/skills/polybaskets-skills/idl/polymarket-mirror.idl";
-const IDL_TOKEN = "C:/Users/yezir/.agents/skills/polybaskets-skills/idl/bet_token_client.idl";
-const IDL_LANE = "C:/Users/yezir/.agents/skills/polybaskets-skills/idl/bet_lane_client.idl";
-
-let api, account, hexAddress, voucherId;
-let metaBasket, metaToken, metaLane;
-
 function log(...args) {
     console.log(`[${new Date().toLocaleTimeString()}] 💰 [CHIP-FARMER]`, ...args);
+}
+
+function findIdl(filename) {
+    const home = process.env.HOME || process.env.USERPROFILE || "";
+    const candidates = [
+        path.join(process.cwd(), "skills", "idl", filename),
+        path.join(home, ".agents", "skills", "polybaskets-skills", "idl", filename),
+        path.join("/root", ".agents", "skills", "polybaskets-skills", "idl", filename), // Docker root
+        path.join("C:/Users/yezir/.agents/skills/polybaskets-skills/idl", filename)
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
 }
 
 async function init() {
     log("Initializing Gear API and Loading Metadata...");
     api = await GearApi.create({ providerAddress: RPC });
     const keyring = new Keyring({ type: "sr25519" });
+    if (!process.env.PRIVATE_KEY) throw new Error("PRIVATE_KEY missing in .env");
     account = keyring.addFromUri(process.env.PRIVATE_KEY);
     hexAddress = "0xa043f97bc85c4c43e67244fc6d19a7d796b88adda32c766778ceb948699c7d76";
 
-    metaBasket = ProgramMetadata.from(fs.readFileSync(IDL_BASKET, "utf8"));
-    metaToken = ProgramMetadata.from(fs.readFileSync(IDL_TOKEN, "utf8"));
-    metaLane = ProgramMetadata.from(fs.readFileSync(IDL_LANE, "utf8"));
+    const idlBasket = findIdl("polymarket-mirror.idl");
+    const idlToken = findIdl("bet_token_client.idl");
+    const idlLane = findIdl("bet_lane_client.idl");
+
+    if (!idlBasket || !idlToken || !idlLane) {
+        throw new Error(`One or more IDL files missing. Found: Basket=${idlBasket}, Token=${idlToken}, Lane=${idlLane}`);
+    }
+
+    metaBasket = ProgramMetadata.from(fs.readFileSync(idlBasket, "utf8"));
+    metaToken = ProgramMetadata.from(fs.readFileSync(idlToken, "utf8"));
+    metaLane = ProgramMetadata.from(fs.readFileSync(idlLane, "utf8"));
     
     log("Metadata loaded. Farmer ready.");
 }
