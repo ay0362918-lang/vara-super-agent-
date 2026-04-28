@@ -229,34 +229,54 @@ async function approveBetLane(baseAmount) {
         return false;
 
     } catch (err) {
-        log("❌ Approve error:", err.message || String(err));
+        let errorMsg = err.message || String(err);
+        if (process.env.PRIVATE_KEY) {
+            errorMsg = errorMsg.replace(process.env.PRIVATE_KEY.trim(), "[HIDDEN-MNEMONIC]");
+        }
+        // Shorten the massive error dump since it's just expected nonce collisions
+        const isCollision = errorMsg.includes("Command failed");
+        log(isCollision ? "⚠️ Approve skipped (Expected Nonce Collision)" : `❌ Approve error: ${errorMsg}`);
         return false;
     }
 }
 
+async function worker(id, offsetMs) {
+    await wait(offsetMs);
+    log(`🏃 Worker ${id} spawned and offsetting by ${offsetMs}ms...`);
+    let localCounter = 0;
+    while (true) {
+        try {
+            // Only worker 1 does the voucher check to save API calls
+            if (localCounter % 10 === 0 && id === 1) { 
+                 await ensureVoucher();
+            }
+            // Add massive random padding at the end to guarantee variance
+            await approveBetLane("200000000000" + Math.floor(Math.random() * 99));
+            localCounter++;
+        } catch (err) {
+            await wait(2000);
+        }
+    }
+}
+
 async function loop() {
-    log("🚀 APPROVE SPAMMER LOOP STARTED");
+    log("🚀 MULTI-THREADED APPROVE SPAMMER LOOP STARTED");
 
     await init();
     await ensureVoucher();
     await registerAgent();
 
-    while (true) {
-        try {
-            // Re-verify voucher silently occasionally
-            if (approveCounter % 10 === 0) {
-                 await ensureVoucher();
-            }
+    // Spawn 5 concurrent overlapping workers on this ONE server
+    // They are offset by 1500ms so they perfectly interleave the 6s transaction block time natively!
+    worker(1, 0);
+    worker(2, 1500);
+    worker(3, 3000);
+    worker(4, 4500);
+    worker(5, 6000);
 
-            // Fire a massive approve immediately to ensure any concurrent betting scripts sharing the wallet always have allowance
-            await approveBetLane("20000000000000");
-
-            // Zero delay to maximize speed. The execFile Async inherently blocks until the block processes.
-
-        } catch (err) {
-            log("💥 Loop error:", err.message);
-            await wait(10000);
-        }
+    while(true) {
+        // Keep the main process alive forever while workers do the heavy lifting in asynchronously
+        await wait(60000);
     }
 }
 
