@@ -188,10 +188,7 @@ async function approveBetLane(baseAmount) {
         // preventing the blockchain or RPC node from caching and dropping what looks like an accidental duplicate transaction.
         const randomizedAmount = Number(baseAmount) + Math.floor(Math.random() * 100);
         
-        await execFileAsync("vara-wallet", ["config", "set", "network", "mainnet"], {
-            maxBuffer: 1024 * 1024,
-            timeout: 60000
-        });
+        // [MASSIVE SPEED OPTIMIZATION]: Removed the 'config set network mainnet' command from the loop since it is already permanently configured in registerAgent!
 
         const argsJson = `["${BET_LANE}", ${randomizedAmount}]`;
         
