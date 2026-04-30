@@ -361,7 +361,7 @@ async function main() {
         try {
             await farmCycle();
             log("⏳ Next cycle in 30s...");
-            await wait(30000); // 30s between cycles — bet continuously
+            await wait(2000); // 30s between cycles — bet continuously
         } catch (err) {
             log("💥 Cycle error:", err.message);
             await wait(15000);
