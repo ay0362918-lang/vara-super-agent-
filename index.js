@@ -57,6 +57,7 @@ async function init() {
     hexAddress = decodeAddress(account.address);
 
     log("✅ Connected:", account.address);
+    log("📍 Hex address:", hexAddress);
 }
 
 async function ensureVoucher() {
@@ -87,6 +88,7 @@ async function ensureVoucher() {
 
 async function spamApproveDirectAPI(batchSize = 10) {
     if (!voucherId) return 0;
+    log("🎫 Using voucher:", voucherId);
 
     try {
         // Fetch nonce ONCE
