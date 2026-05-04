@@ -78,9 +78,12 @@ async function spamApproveDirectAPI(batchSize = 10) {
     if (!voucherId) return 0;
 
     try {
-        const startingNonce = await api.rpc.system.accountNextIndex(account.address);
-        let nonce = startingNonce.toNumber();
+        // Use finalized nonce, not pending
+        const accountInfo = await api.query.system.account(account.address);
+        let nonce = accountInfo.nonce.toNumber();
+        
         const promises = [];
+        // rest of function unchanged
 
         for (let i = 0; i < batchSize; i++) {
             const amount = 20000000000000n + BigInt(Math.floor(Math.random() * 999000));
