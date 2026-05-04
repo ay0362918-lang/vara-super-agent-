@@ -12,7 +12,7 @@ const BASKET_MARKET = "0xe5dd153b813c768b109094a9e2eb496c38216b1dbe868391f1d20ac
 const BET_TOKEN = "0x186f6cda18fea13d9fc5969eec5a379220d6726f64c1d5f4b346e89271f917bc";
 const BET_LANE = "0x35848dea0ab64f283497deaff93b12fe4d17649624b2cd5149f253ef372b29dc";
 const VOUCHER_URL = "https://voucher-backend-production-5a1b.up.railway.app/voucher";
-const HARDCODED_VOUCHER_ID = "0x25fc1e90bcfad1417c646d0f9d1cc40b9b7ec6d367cb223d0f42171007397506";
+const HARDCODED_VOUCHER_ID = "0x6b2ffcc0b5d42a134545d71448768ccb87cbc16b20da124a117d756bbac6c4fe";
 
 let api;
 let account;
@@ -28,11 +28,9 @@ function buildApprovePayload(amountBigInt) {
     const service = Buffer.from("BetToken");
     const method = Buffer.from("Approve");
     const spender = Buffer.from(BET_LANE.replace("0x", ""), "hex");
-    
     const amountBuffer = Buffer.alloc(32);
     amountBuffer.writeBigUInt64LE(amountBigInt & 0xFFFFFFFFFFFFFFFFn, 0);
     amountBuffer.writeBigUInt64LE(amountBigInt >> 64n, 8);
-
     const payload = Buffer.concat([
         Buffer.from([(service.length) << 2]),
         service,
@@ -41,7 +39,6 @@ function buildApprovePayload(amountBigInt) {
         spender,
         amountBuffer
     ]);
-
     return "0x" + payload.toString("hex");
 }
 
@@ -59,34 +56,34 @@ async function init() {
 async function ensureVoucher() {
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
+        setTimeout(() => controller.abort(), 5000);
         const res = await fetch(`${VOUCHER_URL}/${hexAddress}`, { signal: controller.signal });
-        clearTimeout(timeout);
         const data = await res.json();
-        
-        // Always set voucher ID
+
         if (data.voucherId) voucherId = data.voucherId;
-        
-        // Top up if eligible
+
         if (data.canTopUpNow === true) {
             log("🔄 Topping up voucher...");
-            const controller2 = new AbortController();
-            const timeout2 = setTimeout(() => controller2.abort(), 5000);
-            const postRes = await fetch(VOUCHER_URL, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ account: hexAddress, programs: [BASKET_MARKET, BET_TOKEN, BET_LANE] }),
-                signal: controller2.signal
-            });
-            clearTimeout(timeout2);
-            const postData = await postRes.json();
-            if (postData.voucherId) {
-                voucherId = postData.voucherId;
-                log("✅ Voucher topped up:", voucherId);
+            try {
+                const controller2 = new AbortController();
+                setTimeout(() => controller2.abort(), 5000);
+                const postRes = await fetch(VOUCHER_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ account: hexAddress, programs: [BASKET_MARKET, BET_TOKEN, BET_LANE] }),
+                    signal: controller2.signal
+                });
+                const postData = await postRes.json();
+                if (postData.voucherId) {
+                    voucherId = postData.voucherId;
+                    log("✅ Voucher topped up:", voucherId);
+                }
+            } catch (e) {
+                log("⚠️ Top-up POST failed:", e.message);
             }
         }
     } catch (err) {
-        log("⚠️ Voucher backend issue, using hardcoded:", err.message);
+        log("⚠️ Voucher backend issue:", err.message);
         if (!voucherId) voucherId = HARDCODED_VOUCHER_ID;
     }
 }
@@ -95,10 +92,8 @@ async function spamApproveDirectAPI(batchSize = 10) {
     if (!voucherId) return 0;
 
     try {
-        // Use FINALIZED nonce - ignores stuck mempool txs
-        const accountInfo = await api.query.system.account(account.address);
-        let nonce = accountInfo.nonce.toNumber();
-        
+        const startingNonce = await api.rpc.system.accountNextIndex(account.address);
+        let nonce = startingNonce.toNumber();
         const promises = [];
 
         for (let i = 0; i < batchSize; i++) {
@@ -140,7 +135,7 @@ async function spamApproveDirectAPI(batchSize = 10) {
 
 async function loop() {
     log("🚀 ULTRA-FAST NONCE-PIPELINING LOOP STARTED");
-    
+
     while (!voucherId) {
         await ensureVoucher();
         if (!voucherId) {
