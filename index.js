@@ -13,6 +13,7 @@ const BET_TOKEN = "0x186f6cda18fea13d9fc5969eec5a379220d6726f64c1d5f4b346e89271f
 const BET_LANE = "0x35848dea0ab64f283497deaff93b12fe4d17649624b2cd5149f253ef372b29dc";
 
 const VOUCHER_URL = "https://voucher-backend-production-5a1b.up.railway.app/voucher";
+const HARDCODED_VOUCHER_ID = "0x25fc1e90bcfad1417c646d0f9d1cc40b9b7ec6d367cb223d0f42171007397506";
 
 let api;
 let account;
@@ -64,11 +65,17 @@ async function ensureVoucher() {
     try {
         const res = await fetch(`${VOUCHER_URL}/${hexAddress}`);
         const data = await res.json();
-
-        if (data.voucherId && data.canTopUpNow === false) {
+        if (data.voucherId) {
             voucherId = data.voucherId;
             return;
         }
+    } catch (err) {
+        log("⚠️ Voucher backend down, using hardcoded voucher");
+    }
+    // Fallback to hardcoded
+    voucherId = HARDCODED_VOUCHER_ID;
+    log("🎫 Using hardcoded voucher:", voucherId);
+}
 
         const postRes = await fetch(VOUCHER_URL, {
             method: "POST",
