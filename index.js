@@ -58,7 +58,10 @@ async function init() {
 
 async function ensureVoucher() {
     try {
-        const res = await fetch(`${VOUCHER_URL}/${hexAddress}`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const res = await fetch(`${VOUCHER_URL}/${hexAddress}`, { signal: controller.signal });
+        clearTimeout(timeout);
         const data = await res.json();
         if (data.voucherId) {
             voucherId = data.voucherId;
