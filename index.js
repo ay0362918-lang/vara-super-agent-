@@ -103,7 +103,7 @@ async function spamApproveDirectAPI(batchSize = 10) {
             const message = {
                 destination: BET_TOKEN,
                 payload: payloadHex,
-                gasLimit: 500000000,
+                gasLimit: 25000000000,
                 value: 0
             };
 
