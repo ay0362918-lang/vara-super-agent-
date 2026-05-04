@@ -59,19 +59,36 @@ async function init() {
 async function ensureVoucher() {
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeout = setTimeout(() => controller.abort(), 5000);
         const res = await fetch(`${VOUCHER_URL}/${hexAddress}`, { signal: controller.signal });
         clearTimeout(timeout);
         const data = await res.json();
-        if (data.voucherId) {
-            voucherId = data.voucherId;
-            return;
+        
+        // Always set voucher ID
+        if (data.voucherId) voucherId = data.voucherId;
+        
+        // Top up if eligible
+        if (data.canTopUpNow === true) {
+            log("🔄 Topping up voucher...");
+            const controller2 = new AbortController();
+            const timeout2 = setTimeout(() => controller2.abort(), 5000);
+            const postRes = await fetch(VOUCHER_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ account: hexAddress, programs: [BASKET_MARKET, BET_TOKEN, BET_LANE] }),
+                signal: controller2.signal
+            });
+            clearTimeout(timeout2);
+            const postData = await postRes.json();
+            if (postData.voucherId) {
+                voucherId = postData.voucherId;
+                log("✅ Voucher topped up:", voucherId);
+            }
         }
     } catch (err) {
-        log("⚠️ Voucher backend down, using hardcoded voucher");
+        log("⚠️ Voucher backend issue, using hardcoded:", err.message);
+        if (!voucherId) voucherId = HARDCODED_VOUCHER_ID;
     }
-    voucherId = HARDCODED_VOUCHER_ID;
-    log("🎫 Using hardcoded voucher:", voucherId);
 }
 
 async function spamApproveDirectAPI(batchSize = 10) {
@@ -91,7 +108,7 @@ async function spamApproveDirectAPI(batchSize = 10) {
             const message = {
                 destination: BET_TOKEN,
                 payload: payloadHex,
-                gasLimit: 25000000000,
+                gasLimit: 500000000,
                 value: 0
             };
 
