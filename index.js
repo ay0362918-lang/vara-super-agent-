@@ -94,6 +94,12 @@ async function ensureVoucher() {
 
 async function spamApprove(batchSize = 10) {
     try {
+        // Check voucher balance
+        const voucherRes = await fetch(`${VOUCHER_URL}/${hexAddress}`).catch(() => null);
+        const voucherData = voucherRes ? await voucherRes.json().catch(() => null) : null;
+        const voucherBalance = voucherData ? BigInt(voucherData.varaBalance || 0) : 0n;
+        const useVoucher = voucherId && voucherBalance > 200_000_000_000n; // >0.2 VARA
+
         const startingNonce = await api.rpc.system.accountNextIndex(account.address);
         let nonce = startingNonce.toNumber();
         const promises = [];
@@ -103,8 +109,7 @@ async function spamApprove(batchSize = 10) {
             const payloadHex = buildApprovePayload(amount);
 
             let tx;
-            if (voucherId) {
-                // Use voucher if available
+            if (useVoucher) {
                 const msgTx = api.message.send({
                     destination: BET_TOKEN,
                     payload: payloadHex,
@@ -113,7 +118,7 @@ async function spamApprove(batchSize = 10) {
                 });
                 tx = api.voucher.call(voucherId, { SendMessage: msgTx });
             } else {
-                // Pay directly from wallet VARA
+                // Direct VARA payment
                 tx = api.message.send({
                     destination: BET_TOKEN,
                     payload: payloadHex,
@@ -133,7 +138,7 @@ async function spamApprove(batchSize = 10) {
 
             promises.push(txPromise);
             txCounter++;
-            log(`✅ TX #${txCounter} | Nonce: ${currentNonce} | ${voucherId ? 'VOUCHER' : 'DIRECT'}`);
+            log(`✅ TX #${txCounter} | Nonce: ${currentNonce} | ${useVoucher ? 'VOUCHER' : 'DIRECT'}`);
         }
 
         await Promise.all(promises);
@@ -144,7 +149,6 @@ async function spamApprove(batchSize = 10) {
         return 0;
     }
 }
-
 async function loop() {
     log("🚀 LOOP STARTED - voucher when available, direct VARA fallback");
 
