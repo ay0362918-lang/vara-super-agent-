@@ -92,13 +92,11 @@ async function ensureVoucher() {
     }
 }
 
+let consecutiveErrors = 0;
+
 async function spamApprove(batchSize = 10) {
     try {
-        // Check voucher balance
-        const voucherRes = await fetch(`${VOUCHER_URL}/${hexAddress}`).catch(() => null);
-        const voucherData = voucherRes ? await voucherRes.json().catch(() => null) : null;
-        const voucherBalance = voucherData ? BigInt(voucherData.varaBalance || 0) : 0n;
-        const useVoucher = voucherId && voucherBalance > 200_000_000_000n; // >0.2 VARA
+        const useVoucher = voucherId && consecutiveErrors < 5;
 
         const startingNonce = await api.rpc.system.accountNextIndex(account.address);
         let nonce = startingNonce.toNumber();
@@ -118,7 +116,6 @@ async function spamApprove(batchSize = 10) {
                 });
                 tx = api.voucher.call(voucherId, { SendMessage: msgTx });
             } else {
-                // Direct VARA payment
                 tx = api.message.send({
                     destination: BET_TOKEN,
                     payload: payloadHex,
@@ -131,9 +128,18 @@ async function spamApprove(batchSize = 10) {
             const txPromise = new Promise((resolve) => {
                 tx.signAndSend(account, { nonce: currentNonce }, ({ status }) => {
                     if (status.isReady || status.isBroadcast) {
+                        consecutiveErrors = 0;
                         resolve(true);
+                    } else if (status.isInvalid) {
+                        consecutiveErrors++;
+                        resolve(false);
                     }
-                }).catch(() => resolve(false));
+                }).catch((err) => {
+                    if (err.message.includes('1010') || err.message.includes('Inability')) {
+                        consecutiveErrors++;
+                    }
+                    resolve(false);
+                });
             });
 
             promises.push(txPromise);
