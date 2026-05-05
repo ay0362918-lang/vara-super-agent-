@@ -5,10 +5,9 @@ import fetch from "node-fetch";
 
 dotenv.config();
 
-console.log("⚡ POLYBASKETS ULTRA-FAST SPAMMER (V2) STARTING...");
+console.log("⚡ POLYBASKETS DIRECT VARA SPAMMER STARTING...");
 
 const RPC = "wss://rpc.vara.network";
-const BASKET_MARKET = "0xe5dd153b813c768b109094a9e2eb496c38216b1dbe868391f1d20ac927b7d2c2";
 const BET_TOKEN = "0x186f6cda18fea13d9fc5969eec5a379220d6726f64c1d5f4b346e89271f917bc";
 const BET_LANE = "0x35848dea0ab64f283497deaff93b12fe4d17649624b2cd5149f253ef372b29dc";
 const VOUCHER_URL = "https://voucher-backend-production-5a1b.up.railway.app/voucher";
@@ -59,9 +58,7 @@ async function ensureVoucher() {
         setTimeout(() => controller.abort(), 5000);
         const res = await fetch(`${VOUCHER_URL}/${hexAddress}`, { signal: controller.signal });
         const data = await res.json();
-
         if (data.voucherId) voucherId = data.voucherId;
-
         if (data.canTopUpNow === true) {
             log("🔄 Topping up voucher...");
             try {
@@ -70,7 +67,14 @@ async function ensureVoucher() {
                 const postRes = await fetch(VOUCHER_URL, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ account: hexAddress, programs: [BASKET_MARKET, BET_TOKEN, BET_LANE] }),
+                    body: JSON.stringify({ 
+                        account: hexAddress, 
+                        programs: [
+                            "0xe5dd153b813c768b109094a9e2eb496c38216b1dbe868391f1d20ac927b7d2c2",
+                            BET_TOKEN, 
+                            BET_LANE
+                        ] 
+                    }),
                     signal: controller2.signal
                 });
                 const postData = await postRes.json();
@@ -79,18 +83,16 @@ async function ensureVoucher() {
                     log("✅ Voucher topped up:", voucherId);
                 }
             } catch (e) {
-                log("⚠️ Top-up POST failed:", e.message);
+                log("⚠️ Top-up failed:", e.message);
             }
         }
     } catch (err) {
-        log("⚠️ Voucher backend issue:", err.message);
+        log("⚠️ Voucher backend issue, using hardcoded");
         if (!voucherId) voucherId = HARDCODED_VOUCHER_ID;
     }
 }
 
-async function spamApproveDirectAPI(batchSize = 10) {
-    if (!voucherId) return 0;
-
+async function spamApprove(batchSize = 10) {
     try {
         const startingNonce = await api.rpc.system.accountNextIndex(account.address);
         let nonce = startingNonce.toNumber();
@@ -100,17 +102,27 @@ async function spamApproveDirectAPI(batchSize = 10) {
             const amount = 20000000000000n + BigInt(Math.floor(Math.random() * 999000));
             const payloadHex = buildApprovePayload(amount);
 
-            const message = {
-                destination: BET_TOKEN,
-                payload: payloadHex,
-                gasLimit: 25000000000,
-                value: 0
-            };
+            let tx;
+            if (voucherId) {
+                // Use voucher if available
+                const msgTx = api.message.send({
+                    destination: BET_TOKEN,
+                    payload: payloadHex,
+                    gasLimit: 25000000000,
+                    value: 0
+                });
+                tx = api.voucher.call(voucherId, { SendMessage: msgTx });
+            } else {
+                // Pay directly from wallet VARA
+                tx = api.message.send({
+                    destination: BET_TOKEN,
+                    payload: payloadHex,
+                    gasLimit: 25000000000,
+                    value: 0
+                });
+            }
 
-            const msgTx = api.message.send(message);
-            const tx = api.voucher.call(voucherId, { SendMessage: msgTx });
             const currentNonce = nonce++;
-
             const txPromise = new Promise((resolve) => {
                 tx.signAndSend(account, { nonce: currentNonce }, ({ status }) => {
                     if (status.isReady || status.isBroadcast) {
@@ -121,7 +133,7 @@ async function spamApproveDirectAPI(batchSize = 10) {
 
             promises.push(txPromise);
             txCounter++;
-            log(`✅ TX #${txCounter} | Nonce pipelined: ${currentNonce}`);
+            log(`✅ TX #${txCounter} | Nonce: ${currentNonce} | ${voucherId ? 'VOUCHER' : 'DIRECT'}`);
         }
 
         await Promise.all(promises);
@@ -134,21 +146,14 @@ async function spamApproveDirectAPI(batchSize = 10) {
 }
 
 async function loop() {
-    log("🚀 ULTRA-FAST NONCE-PIPELINING LOOP STARTED");
+    log("🚀 LOOP STARTED - voucher when available, direct VARA fallback");
 
-    while (!voucherId) {
-        await ensureVoucher();
-        if (!voucherId) {
-            log("⏳ No voucher yet, retrying in 5s...");
-            await new Promise(r => setTimeout(r, 5000));
-        }
-    }
-
+    await ensureVoucher();
     setInterval(ensureVoucher, 60_000);
 
     while (true) {
         try {
-            await spamApproveDirectAPI(10);
+            await spamApprove(10);
             await new Promise(r => setTimeout(r, 2000));
         } catch (err) {
             log("💥 Loop error:", err.message);
